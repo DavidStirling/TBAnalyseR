@@ -1,8 +1,8 @@
 library(shiny)
 library(kernlab)
 library(dplyr)
-completedanalysis = FALSE
 # Setup constant values
+completedanalysis = FALSE
 splitnames = FALSE
 batf2mean = -6.48989899
 batf2stdev = 0.792471586
@@ -10,6 +10,8 @@ sweeneymean = -2.071616162
 sweeneystdev = 0.412494173
 sulimanmean = -3.901313131
 sulimanstdev = 1.38555054
+roemean = -7.344796378
+roestdev = 2.078372594
 # Setup redcap lookup table
 fullredcapnames = c('baseline_arm_1', 'longitudinal_m3_arm_1', 'longitudinal_m6_arm_1', 'longitudinal_m9_arm_1',
                     'longitudinal_m12_arm_1', 'longitudinal_m15_arm_1', 'longitudinal_m18_arm_1', 'longitudinal_m21_arm_1',
@@ -28,8 +30,7 @@ runanalysis <- function(inputfile){
   if (lengths(regmatches(datasheet[1,9], gregexpr("_", datasheet[1,9]))) == 2){
     splitnames = TRUE
   }
-  
-  
+
   # Get IDs of rows with genes of interest
   idbatf2 = which(datasheet$Probe.Name == "BATF2")
   idgbp5 = which(datasheet$Probe.Name == "GBP5")
@@ -81,20 +82,26 @@ runanalysis <- function(inputfile){
     # Store results, parsing sample data if it's present in the sample name
     if (splitnames == TRUE) {
       samplename = as.character(datasheet[1,i])
+      if (lengths(regmatches(samplename, gregexpr("_", samplename))) == 2) {
       split = unlist(strsplit(samplename,split="_"))
       name = split[1]
       type = split[2]
       date = split[3]
+      } else {
+        name = samplename
+        type = "undefined"
+        date = "undefined"
+      }
       # Replace type with lookup
       if (tolower(type) %in% lookupdf$Type) {
         type = lookupdf$redcap[match(tolower(type), lookupdf$Type)]
       }
-      sampleresults = data.frame("UIN" = name, "Redcap_Event_Name" = type, "Sample_Date" = date, "BATF2_Value" = batf2score, "BATF2_Zscore" = batf2z,
-                                 "Sweeney3_Value" = sweeney3, "Sweeney3_Zscore" = sweeneyz, "Suliman4_Value" = suliman4, "Suliman4_Zscore" = sulimanz)
+      sampleresults = data.frame("uin" = name, "redcap_event_name" = type, "sample_date" = date, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
+                                 "sweeney3_value" = sweeney3, "sweeney3_zscore" = sweeneyz, "suliman4_value" = suliman4, "suliman4_zscore" = sulimanz)
     } else{
       name = as.character(datasheet[1,i])
-      sampleresults = data.frame("UIN" = name, "BATF2_Value" = batf2score, "BATF2_Zscore" = batf2z,
-                                 "Sweeney3_Value" = sweeney3, "Sweeney3_Zscore" = sweeneyz,"Suliman4_Value" = suliman4, "Suliman4_Zscore" = sulimanz)
+      sampleresults = data.frame("uin" = name, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
+                                 "sweeney3_value" = sweeney3, "sweeney3_zscore" = sweeneyz,"suliman4_value" = suliman4, "suliman4_zscore" = sulimanz)
     }
     
     databuffer = rbind(databuffer, sampleresults)
@@ -106,40 +113,43 @@ runanalysis <- function(inputfile){
   transposed = t(inputcleaned)
   rownames(transposed) <- c()
   colnames(transposed) <- transposed[1, ]
-  colnames(transposed)[1] = "Patient"
+  colnames(transposed)[1] = "patient"
   transposed <- transposed[-1, ]
   transposed = transposed[, c(1:37)]
   nsdatasheet=as.data.frame(transposed)
   nsdatasheet_c = as.data.frame(apply(nsdatasheet, 2, as.character))
   nsdatasheet_n = as.data.frame(apply(nsdatasheet_c[,-1], 2, as.numeric))
-  test_df = cbind("Patient" = nsdatasheet_c[,1], nsdatasheet_n)
+  test_df = cbind("patient" = nsdatasheet_c[,1], nsdatasheet_n)
   
   testdata <- test_df[,-c(1,2)] # remove the sample ID from the test data to run it through the model
   numobs_test <- dim(testdata)[1]
   
   # Cycle through samples and get SVM prediction
-  pred.value_out <- rbind() # create the output list
+  roeresults <- rbind() # create the output list
   for (i in 1:numobs_test){
     test_data <- testdata[i,]
     # Predict with SVM model
-    pred.value <- predict(svmmodel, test_data, type="decision")
-    pred.value <- pred.value * -1 # Correct for inverted SVM value issue
-    pred.value_out <- rbind(pred.value_out, pred.value) 
+    roe_value <- predict(svmmodel, test_data, type="decision")
+    roe_value <- roe_value * -1 # Correct for inverted SVM value issue
+    
+    roe_zscore <- (roe_value - roemean) / roestdev
+    resultrow = cbind(roe_value, roe_zscore)
+    roeresults <- rbind(roeresults, resultrow) 
   }
   # Combine other test data with SVM results for output
-  decisions <<- as.data.frame(pred.value_out)
-  fulldata <<- as.data.frame(cbind(databuffer, "Roe3_Score"=decisions$V1))
+  decisions <<- as.data.frame(roeresults)
+  fulldata <<- as.data.frame(cbind(databuffer, "roe3_value" = decisions$V1, "roe3_zscore" = decisions$V2))
   completedanalysis <<- TRUE
   return(fulldata)
 }
 
+# Shiny App UI
 ui <- fluidPage(
   titlePanel('TBAnalyseR'),
   sidebarLayout(
     sidebarPanel(
       fileInput("inputfile", "Upload Nanostring data file",  multiple = FALSE, accept = c("text/csv", "text/comma-separated-values", "text/plain", ".csv")),
       uiOutput("download")
-      #downloadButton('downloadData', 'Download Results')
     ),
     mainPanel(
       p("This app is designed to process raw Nanostring output CSV files (log2-transformed) and perform diagnostic tests for TB based on gene expression."),
@@ -148,8 +158,8 @@ ui <- fluidPage(
   )
 )
 
+# Shiny App Server
 server <- function(input, output) {
-  
   generateResults <- reactive({
     file = input$inputfile
     try(df <- runanalysis(file$datapath))
@@ -159,16 +169,11 @@ server <- function(input, output) {
     return(df)
   })
   
-
-  
   output$table <- renderTable({
     req(input$inputfile)
     generateResults()
   })
-  
-  # downloadHandler() takes two arguments, both functions.
-  # The content function is passed a filename as an argument, and
-  #   it should write out data to that filename.
+
   output$downloadData <- downloadHandler(
       filename = function() {
       origfile = input$inputfile
