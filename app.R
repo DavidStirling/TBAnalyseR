@@ -117,7 +117,7 @@ runanalysis <- function(inputfile){
   }
   
   # Fetch SVM results
-  # Transpose and comvert input file to a more useful format 
+  # Transpose and convert input file to a more useful format 
   inputcleaned <- datasheet[-c(2), -c(2:8)]
   transposed = t(inputcleaned)
   rownames(transposed) <- c()
