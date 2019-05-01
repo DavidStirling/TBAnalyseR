@@ -10,8 +10,11 @@ sweeneymean = -2.071616162
 sweeneystdev = 0.412494173
 sulimanmean = -3.901313131
 sulimanstdev = 1.38555054
-roemean = -7.344796378
-roestdev = 2.078372594
+roemean = -49.99192115
+roestdev = 1.644894428
+zakmean = -2.919968884
+zakstdev = 0.815010259
+
 # Setup redcap lookup table
 fullredcapnames = c('baseline_arm_1', 'longitudinal_m3_arm_1', 'longitudinal_m6_arm_1', 'longitudinal_m9_arm_1',
                     'longitudinal_m12_arm_1', 'longitudinal_m15_arm_1', 'longitudinal_m18_arm_1', 'longitudinal_m21_arm_1',
@@ -19,10 +22,16 @@ fullredcapnames = c('baseline_arm_1', 'longitudinal_m3_arm_1', 'longitudinal_m6_
 lookups = c('base', 'longm3', 'longm6', 'longm9', 'longm12', 'longm15', 'longm18', 'longm21', 'longm24', 'treatw4', 'treatw8', 'treatw12', 'treatw24')
 lookupdf = data.frame(Type = lookups, redcap = fullredcapnames)
 # Load SVM Model
-load("svmmodelroe3")
+load("Roe3.model") #roe3model
+load("Zak16.model") #zak16model
 
 runanalysis <- function(inputfile){
-  completedanalysis <<- FALSE
+
+  normgapdh <- function(x) {
+    return(x - test_data$GAPDH)
+  }
+  
+    completedanalysis <<- FALSE
   # Try to import the data sheet
   datasheet = read.csv(inputfile, 1, stringsAsFactors = FALSE, as.is = TRUE)
   
@@ -120,25 +129,34 @@ runanalysis <- function(inputfile){
   nsdatasheet_c = as.data.frame(apply(nsdatasheet, 2, as.character))
   nsdatasheet_n = as.data.frame(apply(nsdatasheet_c[,-1], 2, as.numeric))
   test_df = cbind("patient" = nsdatasheet_c[,1], nsdatasheet_n)
-  
-  testdata <- test_df[,-c(1,2)] # remove the sample ID from the test data to run it through the model
+  testdata <- test_df[,-c(1)] # remove the sample ID from the test data to run it through the model
   numobs_test <- dim(testdata)[1]
   
+  # Convert names of columns to correct format for SVM
+  names(testdata)[names(testdata)=="FCGR1A (CD64)"] <- "FCGR1A"
+  names(testdata)[names(testdata)=="SEPT4."] <- "SEPT4"
+
+  
   # Cycle through samples and get SVM prediction
-  roeresults <- rbind() # create the output list
+  svmresults <- rbind() # create the output list
   for (i in 1:numobs_test){
     test_data <- testdata[i,]
+    test_data[] <- lapply(test_data, normgapdh)
     # Predict with SVM model
-    roe_value <- predict(svmmodel, test_data, type="decision")
+    roe_value <- predict(roe3model, test_data, type="decision")
     roe_value <- roe_value * -1 # Correct for inverted SVM value issue
-    
     roe_zscore <- (roe_value - roemean) / roestdev
-    resultrow = cbind(roe_value, roe_zscore)
-    roeresults <- rbind(roeresults, resultrow) 
+
+    zak_value <- predict(zak16model, test_data, type="decision")
+    #zak_value <- zak_value * -1 # No need to correct for inverted SVM value issue
+	  zak_zscore <- (zak_value - zakmean) / zakstdev
+	  
+    resultrow = cbind(roe_value, roe_zscore, zak_value, zak_zscore)
+    svmresults <- rbind(svmresults, resultrow) 
   }
   # Combine other test data with SVM results for output
-  decisions <<- as.data.frame(roeresults)
-  fulldata <<- as.data.frame(cbind(databuffer, "roe3_value" = decisions$V1, "roe3_zscore" = decisions$V2))
+  decisions <<- as.data.frame(svmresults)
+  fulldata <<- as.data.frame(cbind(databuffer, "roe3_value" = decisions$V1, "roe3_zscore" = decisions$V2, "zak16_value" = decisions$V3, "zak16_zscore" = decisions$V4))
   completedanalysis <<- TRUE
   return(fulldata)
 }
@@ -152,6 +170,7 @@ ui <- fluidPage(
       uiOutput("download")
     ),
     mainPanel(
+      p(strong("Update 1.2"), "- Zak-16 scores added. (01/05/19)"),
       p("This app is designed to process raw Nanostring output CSV files (log2-transformed) and perform diagnostic tests for TB based on gene expression."),
       tableOutput('table')
     )
