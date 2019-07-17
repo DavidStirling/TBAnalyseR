@@ -39,6 +39,9 @@ runanalysis <- function(inputfile){
   if (lengths(regmatches(datasheet[1,9], gregexpr("_", datasheet[1,9]))) == 2){
     splitnames = TRUE
   }
+  
+  # Get row ID of first data column
+  samplecolumnid = grep(".RCC", colnames(datasheet))[1]
 
   # Get IDs of rows with genes of interest
   idbatf2 = which(datasheet$Probe.Name == "BATF2")
@@ -55,7 +58,7 @@ runanalysis <- function(inputfile){
   databuffer = data.frame()
   
   # Cycle through samples
-  for (i in seq(9, ncol(datasheet))){
+  for (i in seq(samplecolumnid, ncol(datasheet))){
     # Obtain correct row IDs for each gene
     batf2 = as.numeric(as.character(datasheet[idbatf2,i]))
     gapdh = as.numeric(as.character(datasheet[idgapdh,i]))
@@ -96,6 +99,10 @@ runanalysis <- function(inputfile){
       name = split[1]
       type = split[2]
       date = split[3]
+      #Add dashes to date
+      if (nchar(date) == 8) {
+        date = gsub("(.{4})(?=\\d{4})|(.{2})(?=\\d{2})", "\\1\\2-", date, perl = TRUE)
+      }
       } else {
         name = samplename
         type = "undefined"
@@ -105,11 +112,11 @@ runanalysis <- function(inputfile){
       if (tolower(type) %in% lookupdf$Type) {
         type = lookupdf$redcap[match(tolower(type), lookupdf$Type)]
       }
-      sampleresults = data.frame("uin" = name, "redcap_event_name" = type, "sample_date" = date, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
+      sampleresults = data.frame("uin" = name, "redcap_event_name" = type, "sample_date" = date, "nanostring_complete" = 2, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
                                  "sweeney3_value" = sweeney3, "sweeney3_zscore" = sweeneyz, "suliman4_value" = suliman4, "suliman4_zscore" = sulimanz)
     } else{
       name = as.character(datasheet[1,i])
-      sampleresults = data.frame("uin" = name, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
+      sampleresults = data.frame("uin" = name, "nanostring_complete" = 2, "batf2_value" = batf2score, "batf2_zscore" = batf2z,
                                  "sweeney3_value" = sweeney3, "sweeney3_zscore" = sweeneyz,"suliman4_value" = suliman4, "suliman4_zscore" = sulimanz)
     }
     
@@ -118,7 +125,7 @@ runanalysis <- function(inputfile){
   
   # Fetch SVM results
   # Transpose and convert input file to a more useful format 
-  inputcleaned <- datasheet[-c(2), -c(2:8)]
+  inputcleaned <- datasheet[-c(2), -c(2:(samplecolumnid-1))]
   transposed = t(inputcleaned)
   rownames(transposed) <- c()
   colnames(transposed) <- transposed[1, ]
@@ -170,7 +177,7 @@ ui <- fluidPage(
       uiOutput("download")
     ),
     mainPanel(
-      p(strong("Update 1.2"), "- Zak-16 scores added. (01/05/19)"),
+      p(strong("Update 1.3"), "- nanostring_complete field added, date format changed, bug fixes. (17/07/19)"),
       p("This app is designed to process raw Nanostring output CSV files (log2-transformed) and perform diagnostic tests for TB based on gene expression."),
       tableOutput('table')
     )
@@ -212,4 +219,3 @@ server <- function(input, output) {
   }
 
 shinyApp(ui = ui, server = server)
-
