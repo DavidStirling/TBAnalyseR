@@ -177,7 +177,7 @@ ui <- fluidPage(
       uiOutput("download")
     ),
     mainPanel(
-      p(strong("Update 1.3"), "- nanostring_complete field added, date format changed, bug fixes. (17/07/19)"),
+      p(strong("Update 1.4"), "- Fix for SEPT4. (04/12/20)"),
       p("This app is designed to process raw Nanostring output CSV files (log2-transformed) and perform diagnostic tests for TB based on gene expression."),
       tableOutput('table')
     )
