@@ -49,7 +49,7 @@ runanalysis <- function(inputfile){
   iddusp3 = which(datasheet$Probe.Name == "DUSP3")
   idklf2 = which(datasheet$Probe.Name == "KLF2")
   idgas6 = which(datasheet$Probe.Name == "GAS6")
-  idsept4 = which(datasheet$Probe.Name == "SEPT4.")
+  idsept4 = which(datasheet$Probe.Name %in% c("SEPT4.", "SEPT4", "Sep-04"))
   idcd1c = which(datasheet$Probe.Name == "CD1C")
   idblk = which(datasheet$Probe.Name == "BLK")
   idgapdh = which(datasheet$Probe.Name == "GAPDH")
